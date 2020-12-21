@@ -18,4 +18,4 @@
 
 3) Created an ANN model to predict log(salary) from other attributes. Used at least two hidden layers. Used tfruns to tune the model’s hyper-parameters, including the number of nodes in each hidden layer, the activation function in each hidden layer, batch_size, learning_rate, and the number of epochs). Validate each model on the validation set.
 
-4) Measured the performance of your best model (after tuning) on the test set and computed its RMSE.
+4) Measured the performance of the best model (after tuning) on the test set and computed its RMSE.
