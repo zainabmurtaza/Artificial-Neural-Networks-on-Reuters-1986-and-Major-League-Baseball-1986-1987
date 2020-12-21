@@ -1,0 +1,331 @@
+---
+title: Artificial Neural Networks - Reuters 1986 & Major League Baseball 1986-1987
+  dataset
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+# Problem 1— Using ANN for Classifying News Articles
+
+
+
+**Loading the library and reading in the dataset**
+
+```{r}
+library(keras) 
+#install_keras()
+
+reuters=dataset_reuters(num_words=10000) 
+
+```
+
+**Overall structure and summary statistics of variables.**
+
+```{r}
+str(reuters$train$x, list.len = 10)
+```
+
+
+**One-hot encoding of the dataset**
+
+
+```{r}
+one_hot_encoding=function(x, dimension=10000) {
+  encoded=matrix(0,length(x),dimension)
+  for (i in 1:length(x))
+  encoded[i, x[[i]]]=1
+  return (encoded)
+}
+
+```
+
+```{r}
+data_train <- one_hot_encoding(reuters$train$x)
+data_test <- one_hot_encoding(reuters$test$x)
+```
+
+```{r}
+dim(data_train)
+
+dim(data_test)
+```
+
+
+**1. Fitting ANN on the data**
+
+```{r results='hide'}
+
+model <- keras_model_sequential()
+
+model %>%
+  layer_dense(units = 500, activation = 'relu', input_shape = dim(data_train)[2]) %>%
+  layer_dense(units = 250, activation = 'relu') %>%
+  layer_dense(units = 100, activation = 'relu') %>%
+  layer_dense(units = 46, activation = 'softmax')
+
+model %>%
+  compile(optimizer = 'adam', loss = 'sparse_categorical_crossentropy', metrics = c('accuracy'))
+
+set.seed(123)
+
+history <- model %>%
+  fit(data_train, reuters$train$y, batch_size = 50, epochs = 100,
+      validation_data = list(data_test, reuters$test$y))
+
+```
+
+```{r}
+print('Metrics:' )
+
+model %>% evaluate(data_test, reuters$test$y)
+
+```
+
+
+**2. Tuning the ANN**
+
+```{r}
+
+library(tfruns)
+
+# Train\Test split
+
+testX <- data_train[1:1000,]
+testY <- reuters$train$y[1:1000]
+trainX <- data_train[1001:8982,]
+trainY <-reuters$train$y[1001:8982]
+
+```
+
+
+```{r results='hide', warning=FALSE, message=FALSE}
+# Parameter testing
+
+runs <- tuning_run("reuters_train.R", 
+                  flags = list(
+                  nodes_hlayer1 = c(700, 500, 250),
+                  nodes_hlayer2 = c(200, 150, 100),
+                  learning_rate = c(0.01, 0.05, 0.001, 0.0001),                 
+                  batch_size=c(100,200,350,500),
+                  epochs=c(35,60,100),
+                  activation=c("relu","sigmoid","tanh")),
+                  sample = 0.02
+)
+
+```
+
+```{r}
+#runs
+#view_run(runs$run_dir[9])
+
+runsReuters <- runs[order(runs$metric_val_accuracy, decreasing = TRUE),][1,]
+
+```
+
+Best performing with params:
+nodes_hlayer1 = `r runsReuters$flag_nodes_hlayer1`,
+nodes_hlayer2 = `r runsReuters$flag_nodes_hlayer2`,
+batch_size = `r runsReuters$flag_batch_size`,
+activation = `r runsReuters$flag_activation`,
+learning_rate = `r runsReuters$flag_learning_rate`,
+epochs = `r runsReuters$flag_epochs`.
+
+The model fit using these parameters is not overfitting since it performing okay on both seen and unseen data (`r runsReuters$metric_accuracy` training accuracy, `r runsReuters$metric_val_accuracy` testing accuracy).
+At around 10 epochs, the validation loss stopped decreasing significantly in this model. Even though it did decrease afterwards but it was not as much.
+
+**Re-fit with tuned parameters**
+
+```{r results='hide'}
+
+model <- keras_model_sequential()
+
+model %>%
+  layer_dense(units = 500, activation = runsReuters$flag_activation, input_shape = dim(data_train)[2]) %>%
+  layer_dense(units = runsReuters$flag_nodes_hlayer1, activation = runsReuters$flag_activation) %>%
+  layer_dense(units = runsReuters$flag_nodes_hlayer2, activation = runsReuters$flag_activation) %>%
+  layer_dense(units = 46, activation = 'softmax')
+
+model %>%
+  compile(optimizer = optimizer_adam(lr = runsReuters$flag_learning_rate), loss = 'sparse_categorical_crossentropy', metrics = c('accuracy'))
+
+set.seed(123)
+
+model %>%
+  fit(data_train, reuters$train$y, batch_size = runsReuters$flag_batch_size, epochs = runsReuters$flag_epochs,
+      validation_data = list(data_test, reuters$test$y))
+
+```
+
+```{r}
+print('Metrics: ')
+model %>% evaluate(data_test, reuters$test$y)
+```
+
+
+# Problem 2 — Predicting Baseball players’ salaries
+
+**1.Data load and exploration**
+
+```{r}
+hitters <- read.csv("hitters.csv", stringsAsFactors = FALSE)
+
+```
+
+```{r}
+cat("Number of Observations:", dim(hitters)[1])
+
+```
+```{r}
+str(hitters)
+summary(hitters)
+```
+
+16 Numeric features and 3 categorical features with 1 numeric target variables. Salary have 59 null values.
+
+**2. Removing null values rows**
+```{r}
+hitters <- na.omit(hitters, cols = 'Salary')
+```
+
+**3. Correlations**
+```{r}
+# Numerical Variables
+library("gplots")
+# pairs(hitters[c(1:13,16:19)]) # practically useless because a lot of variables
+# cor(hitters[c(1:13,16:19)])
+
+heatmap.2(cor(hitters[c(1:13,16:19)]), density.info = "none", trace = "none")
+
+```
+
+```{r}
+# Categorical Variables
+
+plot(hitters$Salary~factor(hitters$League))
+t.test(hitters$Salary~factor(hitters$League), alternative = 'two.sided')
+
+plot(hitters$Salary~factor(hitters$Division))
+t.test(hitters$Salary~factor(hitters$Division), alternative = 'two.sided')
+
+plot(hitters$Salary~factor(hitters$NewLeague))
+t.test(hitters$Salary~factor(hitters$NewLeague), alternative = 'two.sided')
+
+```
+
+The categorical variable 'Division' is associated with Salary (assuming alpha = 0.01).
+
+**4. Setting seed**
+```{r}
+set.seed(123)
+```
+
+**6,7,9. Data transformations**
+```{r}
+# Categorical Encoding
+
+hitters$League <- ifelse(hitters$League == "A", 1, 0)
+hitters$Division <- ifelse(hitters$Division == "E", 1, 0)
+hitters$NewLeague <- ifelse(hitters$NewLeague == "A", 1, 0)
+
+```
+
+```{r}
+# Log transformation of Salary
+
+hitters$Salary <- log(hitters$Salary)
+
+```
+
+```{r}
+# Scaling Features
+
+hitters[,c(1:13,16:19)] <- scale(hitters[,c(1:13,16:19)])
+
+```
+
+**8. Data partition**
+```{r}
+
+library(caret)
+
+partitionIndex <- createDataPartition(hitters$Salary, p = 0.9, list = FALSE, times = 1)
+
+hitters_train<- as.matrix(hitters[partitionIndex,])
+hitters_test <- as.matrix(hitters[-partitionIndex,])
+
+hitters_train_y <- hitters_train[,19]
+hitters_test_y <- hitters_test[,19]
+
+hitters_train <- hitters_train[,-19]
+hitters_test <- hitters_test[,-19]
+```
+
+**9. Modelling**
+```{r results='hide', warning=FALSE, message=FALSE}
+
+runs <- tuning_run("hitters_train.R", 
+                  flags = list(
+                  nodes_hlayer1 = c(30, 20, 15),
+                  nodes_hlayer2 = c(20, 15, 10),
+                  learning_rate = c(0.01, 0.05, 0.001, 0.0001),                 
+                  batch_size=c(10,20,50,75),
+                  epochs=c(30,50,100),
+                  activation=c("relu","sigmoid","tanh")),
+                  sample = 0.02
+)
+
+
+```
+
+```{r}
+#runs
+#view_run(runs$run_dir[9])
+
+runsHitter <- runs[order(runs$metric_val_loss, decreasing = FALSE),][1,]
+
+```
+
+Best performing with params:
+nodes_hlayer1 = `r runsHitter$flag_nodes_hlayer1`,
+nodes_hlayer2 = `r runsHitter$flag_nodes_hlayer2`,
+batch_size = `r runsHitter$flag_batch_size`,
+activation = `r runsHitter$flag_activation`,
+learning_rate = `r runsHitter$flag_learning_rate`,
+epochs = `r runsHitter$flag_epochs`.
+
+The model fit using these parameters is not overfitting since it performing okay on both seen and unseen data (`r runsHitter$metric_loss` training loss, `r runsHitter$metric_val_loss` testing loss).
+At around 30 epochs, the validation loss stopped decreasing significantly in this model. Even though it did decrease afterwards but it was not as much.
+
+**10. Evaluation of model**
+
+```{r results='hide'}
+
+set.seed(123)
+model <- keras_model_sequential()
+
+model %>%
+  layer_dense(units = 20, activation = runsHitter$flag_activation, input_shape = dim(hitters_test)[2]) %>%
+  layer_dense(units = runsHitter$flag_nodes_hlayer1, activation = runsHitter$flag_activation) %>%
+  layer_dense(units = runsHitter$flag_nodes_hlayer2, activation = runsHitter$flag_activation) %>%
+  layer_dense(units = 1)
+
+model %>%
+  compile(optimizer = optimizer_adam(lr = runsHitter$flag_learning_rate), loss = 'mse')
+
+set.seed(123)
+
+model %>%
+  fit(hitters_train, hitters_train_y, batch_size = runsHitter$flag_batch_size, epochs = runsHitter$flag_epochs,
+      validation_data = list(hitters_test, hitters_test_y))
+
+```
+
+```{r}
+predictions <- model %>% predict(hitters_test)
+
+cat('RMSE:', RMSE(predictions, hitters_test_y))
+
+```
+
