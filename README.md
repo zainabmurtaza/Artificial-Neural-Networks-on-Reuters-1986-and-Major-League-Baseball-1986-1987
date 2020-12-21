@@ -10,7 +10,7 @@
 
 5) Used all the training data in reuters$train to train the ANN with the best hyperparameter combination found after tuning in the previous process. Computed the accuracy of this model on the test set.
 
-# Major League Basketball dataset
+# Major League Baseball dataset
 
 1) Evaluated predictors that had the most correlation with Salary. Used scattered plot, side-by-side box plots, t-test and correlation matrix.
 
